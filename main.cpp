@@ -23,7 +23,7 @@ int main(int argc, char* argv[]) {
     if (res == 0) continue;
     if (res == -1 || res == -2) break;
 
-    print_tcp_packet(packet, header);
+    print_packet(packet, header);
   }
 
   pcap_close(handle);
