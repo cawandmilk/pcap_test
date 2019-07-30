@@ -1,6 +1,9 @@
 #include <iostream>
 #include <pcap.h>
 #include <stdlib.h>
+#include <string.h>
+#include <iostream>
+#include <algorithm>
 #include "packet.h"
 
 using namespace std;
@@ -10,23 +13,19 @@ void usage() {
   printf("sample: pcap_test wlan0\n");
 }
 
-void print_mac(const u_char* mac) {
+void print_mac(const u_int8_t* mac) {
     printf("%02X:%02X:%02X:%02X:%02X:%02X\t", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 }
 
-void print_ip(const u_char* ip) {
+void print_ip(in_addr* ip) {
     printf("%u.%u.%u.%u\t", ip[0], ip[1], ip[2], ip[3]);
 }
 
-void print_port(const u_char* port) {
+void print_port(const u_int16_t* port) {
     printf("%d\n", (port[0] << 8) | port[1]);
 }
 
 void print_tcp_data(const u_char* packet, u_int data_len) {
-    if(!(packet[TCP_FLAG_LOC] & 0x08)) {  // The packet will have some data if PSH flag is '1'.
-        printf("-\n");                    // 0x08 = 0b 0000 1000, 5th bit from MSB is PSH flag.
-        return;
-    }
 
     u_int i = ETHERNET_SIZE + IP_SIZE + 4 * (packet[TCP_SIZE_LOC] >> 4);    // 'i' is the first location of the tcp-data.
     for(int cnt = 0; (cnt < MAX_DATA_LENGTH) && (i < data_len); cnt++, i++) // Print the data(maximum 10 bytes).
@@ -44,20 +43,40 @@ bool is_tcp_packet(const u_char* packet) {
 
 void print_packet(const u_char* packet, struct pcap_pkthdr* header) {
 
-    if( !is_ip_packet(packet) || !is_tcp_packet(packet) )   return;
+    struct libnet_ethernet_hdr e;
+    if ( !memcpy(&e, packet, sizeof(e)) ) {
+         std::cout << "No Packet Accepted!" << std::endl;
+         return;
+    }
 
-    printf("Source:\t\t");
-    print_mac(&packet[SMAC_LOC]);
-    print_ip(&packet[SIP_LOC]);
-    print_port(&packet[SPORT_LOC]);
+    if ( e.ether_type != LIBNET_IPV4_H ) return;
 
-    printf("Destination:\t");
-    print_mac(&packet[DMAC_LOC]);
-    print_ip(&packet[DIP_LOC]);
-    print_port(&packet[DPORT_LOC]);
+    struct libnet_ipv4_hdr i;
+    if( !memcpy(&i, packet + LIBNET_ETH_H, sizeof(i)) ) {
+        std::cout << "Invalid IPv4 Packet Accepted!" << std::endl;
+        return;
+    }
 
-    printf("Data:\t\t");
-    print_tcp_data(packet, header->caplen);
+    if( i.ip_p != LIBNET_TCP_H ) return;
 
-    printf("\n");
+    struct libnet_tcp_hdr t;
+    if( !memcpy(&t, packet + LIBNET_ETH_H + LIBNET_IPV4_H, sizeof(t))) {
+        std::cout << "Invalid TCP Packet Accepted!" << std::endl;
+        return;
+    }
+
+    std::cout << "Source:\t\t";
+    print_mac(e.ether_shost); print_ip(&i.ip_src); print_port(&t.th_sport);
+
+    std::cout << "Destination:\t";
+    print_mac(e.ether_dhost); print_ip(&i.ip_dst); print_port(&t.th_dport);
+
+    u_char* data = (header->caplen > i.ip_len ? const_cast<u_char*>(&packet[i.ip_len]) : NULL);
+    u_int data_len = header->caplen - i.ip_len;
+
+    if( !data )
+        std::cout << "-" << std::endl;
+    else
+        for(u_int cnt = 0; (cnt < 10) && (cnt < data_len); cnt++ )
+            std::cout << showbase << std::internal << data[cnt] << " ";
 }

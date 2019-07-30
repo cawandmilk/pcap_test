@@ -2,6 +2,11 @@
 #define PACKET_H
 
 #include <pcap.h>
+#include <stdint.h>
+#include <netinet/in.h>
+
+#include "./include/libnet/libnet-macros.h"
+#include "./include/libnet/libnet-headers.h"
 
 #define MAX_DATA_LENGTH 10
 
